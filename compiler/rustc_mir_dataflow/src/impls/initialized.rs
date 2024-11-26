@@ -369,10 +369,12 @@ impl<'tcx> Analysis<'tcx> for MaybeInitializedPlaces<'_, 'tcx> {
     }
 }
 
+pub type MaybeUninitializedPlacesDomain = ChunkedBitSet<MovePathIndex>;
+
 impl<'tcx> Analysis<'tcx> for MaybeUninitializedPlaces<'_, 'tcx> {
     /// There can be many more `MovePathIndex` than there are locals in a MIR body.
     /// We use a chunked bitset to avoid paying too high a memory footprint.
-    type Domain = ChunkedBitSet<MovePathIndex>;
+    type Domain = MaybeUninitializedPlacesDomain;
 
     const NAME: &'static str = "maybe_uninit";
 
@@ -490,10 +492,12 @@ impl<'tcx> Analysis<'tcx> for MaybeUninitializedPlaces<'_, 'tcx> {
     }
 }
 
+pub type EverInitializedPlacesDomain = ChunkedBitSet<InitIndex>;
+
 impl<'tcx> Analysis<'tcx> for EverInitializedPlaces<'_, 'tcx> {
     /// There can be many more `InitIndex` than there are locals in a MIR body.
     /// We use a chunked bitset to avoid paying too high a memory footprint.
-    type Domain = ChunkedBitSet<InitIndex>;
+    type Domain = EverInitializedPlacesDomain;
 
     const NAME: &'static str = "ever_init";
 
