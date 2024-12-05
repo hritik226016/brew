@@ -310,12 +310,40 @@ pub fn spin_loop() {
 /// behavior in the calling code. This property makes `black_box` useful for writing code in which
 /// certain optimizations are not desired, such as benchmarks.
 ///
+/// In practice, `black_box` serves two purposes:
+///
+/// 1. It forces the input to be calculated, even if its results are never used
+/// 2. It prevents the compiler from making optimizations related to the value of the returned
+///    type
+///
+/// Note that `black_box` does not prevent its inputs from being optimized before they are passed
+/// to the function, though.
+///
+/// ```
+/// // This...
+/// let y = black_box(5 * 10);
+/// // ...will still be optimized to this:
+/// let y = black_box(50);
+/// ```
+///
+/// In the above example, `5 * 10` is replaced with `50` by the compiler. You can prevent this by
+/// moving the multiplication outside of `black_box`:
+///
+/// ```
+/// // No assumptions can be made about either number, so the multiplication is kept.
+/// let y = black_box(5) * black_box(10);
+/// ```
+///
+/// <div class="warning">
+///
 /// Note however, that `black_box` is only (and can only be) provided on a "best-effort" basis. The
 /// extent to which it can block optimisations may vary depending upon the platform and code-gen
 /// backend used. Programs cannot rely on `black_box` for *correctness*, beyond it behaving as the
 /// identity function. As such, it **must not be relied upon to control critical program behavior.**
 /// This also means that this function does not offer any guarantees for cryptographic or security
 /// purposes.
+///
+/// </div>
 ///
 /// [`std::convert::identity`]: crate::convert::identity
 ///
@@ -357,7 +385,7 @@ pub fn spin_loop() {
 /// ```
 /// use std::hint::black_box;
 ///
-/// // Same `contains` function
+/// // Same `contains` function.
 /// fn contains(haystack: &[&str], needle: &str) -> bool {
 ///     haystack.iter().any(|x| x == &needle)
 /// }
@@ -366,8 +394,13 @@ pub fn spin_loop() {
 ///     let haystack = vec!["abc", "def", "ghi", "jkl", "mno"];
 ///     let needle = "ghi";
 ///     for _ in 0..10 {
-///         // Adjust our benchmark loop contents
-///         black_box(contains(black_box(&haystack), black_box(needle)));
+///         // Force the compiler to run `contains`, even though it is a pure function whose
+///         // results are unused.
+///         black_box(contains(
+///             // Prevent the compiler from making assumptions about the input.
+///             black_box(&haystack),
+///             black_box(needle),
+///         ));
 ///     }
 /// }
 /// ```
