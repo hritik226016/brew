@@ -90,7 +90,7 @@ impl<'a, 'hir> ItemLowerer<'a, 'hir> {
     fn lower_crate(&mut self, c: &Crate) {
         debug_assert_eq!(self.resolver.node_id_to_def_id[&CRATE_NODE_ID], CRATE_DEF_ID);
         self.with_lctx(CRATE_NODE_ID, |lctx| {
-            let module = lctx.lower_mod(&c.items, &c.spans);
+            let module = lctx.lower_mod(&c.items, &c.spans, false);
             lctx.lower_attrs(hir::CRATE_HIR_ID, &c.attrs);
             hir::OwnerNode::Crate(module)
         })
@@ -118,6 +118,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
         &mut self,
         items: &[P<Item>],
         spans: &ModSpans,
+        had_parse_errors: bool,
     ) -> &'hir hir::Mod<'hir> {
         self.arena.alloc(hir::Mod {
             spans: hir::ModSpans {
@@ -125,6 +126,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
                 inject_use_span: self.lower_span(spans.inject_use_span),
             },
             item_ids: self.arena.alloc_from_iter(items.iter().flat_map(|x| self.lower_item_ref(x))),
+            had_parse_errors,
         })
     }
 
@@ -235,8 +237,8 @@ impl<'hir> LoweringContext<'_, 'hir> {
                 })
             }
             ItemKind::Mod(_, mod_kind) => match mod_kind {
-                ModKind::Loaded(items, _, spans) => {
-                    hir::ItemKind::Mod(self.lower_mod(items, spans))
+                ModKind::Loaded(items, _, spans, had_parse_errors) => {
+                    hir::ItemKind::Mod(self.lower_mod(items, spans, *had_parse_errors))
                 }
                 ModKind::Unloaded => panic!("`mod` items should have been loaded by now"),
             },

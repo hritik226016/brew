@@ -120,8 +120,8 @@ hir-stats Name                Accumulated Size         Count     Item Size
 hir-stats ----------------------------------------------------------------
 hir-stats ForeignItemRef            24 ( 0.3%)             1            24
 hir-stats Lifetime                  24 ( 0.3%)             1            24
-hir-stats Mod                       32 ( 0.4%)             1            32
 hir-stats ExprField                 40 ( 0.4%)             1            40
+hir-stats Mod                       40 ( 0.4%)             1            40
 hir-stats TraitItemRef              56 ( 0.6%)             2            28
 hir-stats GenericArg                64 ( 0.7%)             4            16
 hir-stats - Type                      16 ( 0.2%)             1
@@ -163,7 +163,7 @@ hir-stats - Struct                    64 ( 0.7%)             1
 hir-stats - InlineAsm                 64 ( 0.7%)             1
 hir-stats - Lit                      128 ( 1.4%)             2
 hir-stats - Block                    384 ( 4.3%)             6
-hir-stats Item                     968 (10.9%)            11            88
+hir-stats Item                     968 (10.8%)            11            88
 hir-stats - Enum                      88 ( 1.0%)             1
 hir-stats - Trait                     88 ( 1.0%)             1
 hir-stats - Impl                      88 ( 1.0%)             1
@@ -174,5 +174,5 @@ hir-stats - Use                      352 ( 3.9%)             4
 hir-stats Path                   1_240 (13.9%)            31            40
 hir-stats PathSegment            1_920 (21.5%)            40            48
 hir-stats ----------------------------------------------------------------
-hir-stats Total                  8_920                   180
+hir-stats Total                  8_928                   180
 hir-stats
