@@ -462,8 +462,12 @@ impl<'tcx> InlineAssemblyGenerator<'_, 'tcx> {
         let mut slots_output = vec![None; self.operands.len()];
 
         let new_slot_fn = |slot_size: &mut Size, reg_class: InlineAsmRegClass| {
-            let reg_size =
-                reg_class.supported_types(self.arch).iter().map(|(ty, _)| ty.size()).max().unwrap();
+            let reg_size = reg_class
+                .supported_types(self.arch, true)
+                .iter()
+                .map(|(ty, _)| ty.size())
+                .max()
+                .unwrap();
             let align = rustc_abi::Align::from_bytes(reg_size.bytes()).unwrap();
             let offset = slot_size.align_to(align);
             *slot_size = offset + reg_size;
@@ -472,9 +476,14 @@ impl<'tcx> InlineAssemblyGenerator<'_, 'tcx> {
         let mut new_slot = |x| new_slot_fn(&mut slot_size, x);
 
         // Allocate stack slots for saving clobbered registers
-        let abi_clobber = InlineAsmClobberAbi::parse(self.arch, &self.tcx.sess.target, sym::C)
-            .unwrap()
-            .clobbered_regs();
+        let abi_clobber = InlineAsmClobberAbi::parse(
+            self.arch,
+            &self.tcx.sess.target,
+            &self.tcx.sess.unstable_target_features,
+            sym::C,
+        )
+        .unwrap()
+        .clobbered_regs();
         for (i, reg) in self.registers.iter().enumerate().filter_map(|(i, r)| r.map(|r| (i, r))) {
             let mut need_save = true;
             // If the register overlaps with a register clobbered by function call, then

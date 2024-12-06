@@ -61,6 +61,7 @@ fn write_output_file<'ll>(
     dwo_output: Option<&Path>,
     file_type: llvm::FileType,
     self_profiler_ref: &SelfProfilerRef,
+    verify_llvm_ir: bool,
 ) -> Result<(), FatalError> {
     debug!("write_output_file output={:?} dwo_output={:?}", output, dwo_output);
     unsafe {
@@ -79,6 +80,7 @@ fn write_output_file<'ll>(
             output_c.as_ptr(),
             dwo_output_ptr,
             file_type,
+            verify_llvm_ir,
         );
 
         // Record artifact sizes for self-profiling
@@ -507,7 +509,7 @@ fn get_pgo_sample_use_path(config: &ModuleConfig) -> Option<CString> {
 }
 
 fn get_instr_profile_output_path(config: &ModuleConfig) -> Option<CString> {
-    config.instrument_coverage.then(|| CString::new("default_%m_%p.profraw").unwrap())
+    config.instrument_coverage.then(|| c"default_%m_%p.profraw".to_owned())
 }
 
 pub(crate) unsafe fn llvm_optimize(
@@ -840,6 +842,7 @@ pub(crate) unsafe fn codegen(
                         None,
                         llvm::FileType::AssemblyFile,
                         &cgcx.prof,
+                        config.verify_llvm_ir,
                     )
                 })?;
             }
@@ -877,6 +880,7 @@ pub(crate) unsafe fn codegen(
                             dwo_out,
                             llvm::FileType::ObjectFile,
                             &cgcx.prof,
+                            config.verify_llvm_ir,
                         )
                     })?;
                 }
@@ -955,24 +959,7 @@ pub(crate) fn bitcode_section_name(cgcx: &CodegenContext<LlvmCodegenBackend>) ->
     }
 }
 
-/// Embed the bitcode of an LLVM module in the LLVM module itself.
-///
-/// This is done primarily for iOS where it appears to be standard to compile C
-/// code at least with `-fembed-bitcode` which creates two sections in the
-/// executable:
-///
-/// * __LLVM,__bitcode
-/// * __LLVM,__cmdline
-///
-/// It appears *both* of these sections are necessary to get the linker to
-/// recognize what's going on. A suitable cmdline value is taken from the
-/// target spec.
-///
-/// Furthermore debug/O1 builds don't actually embed bitcode but rather just
-/// embed an empty section.
-///
-/// Basically all of this is us attempting to follow in the footsteps of clang
-/// on iOS. See #35968 for lots more info.
+/// Embed the bitcode of an LLVM module for LTO in the LLVM module itself.
 unsafe fn embed_bitcode(
     cgcx: &CodegenContext<LlvmCodegenBackend>,
     llcx: &llvm::Context,

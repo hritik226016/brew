@@ -1029,7 +1029,8 @@ class RustBuild(object):
             raise Exception("no cargo executable found at `{}`".format(
                 self.cargo()))
         args = [self.cargo(), "build", "--manifest-path",
-                os.path.join(self.rust_root, "src/bootstrap/Cargo.toml")]
+                os.path.join(self.rust_root, "src/bootstrap/Cargo.toml"),
+                "-Zroot-dir="+self.rust_root]
         args.extend("--verbose" for _ in range(self.verbose))
         if self.use_locked_deps:
             args.append("--locked")
@@ -1183,6 +1184,8 @@ def bootstrap(args):
     args = [build.bootstrap_binary()]
     args.extend(sys.argv[1:])
     env = os.environ.copy()
+    # The Python process ID is used when creating a Windows job object
+    # (see src\bootstrap\src\utils\job.rs)
     env["BOOTSTRAP_PARENT_ID"] = str(os.getpid())
     env["BOOTSTRAP_PYTHON"] = sys.executable
     run(args, env=env, verbose=build.verbose, is_bootstrap=True)

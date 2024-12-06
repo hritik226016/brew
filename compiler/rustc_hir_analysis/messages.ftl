@@ -113,8 +113,6 @@ hir_analysis_const_param_ty_impl_on_unsized =
     the trait `ConstParamTy` may not be implemented for this type
     .label = type is not `Sized`
 
-hir_analysis_const_specialize = cannot specialize on const impl with non-const impl
-
 hir_analysis_copy_impl_on_non_adt =
     the trait `Copy` cannot be implemented for this type
     .label = type is not a structure or enumeration
@@ -431,6 +429,9 @@ hir_analysis_recursive_generic_parameter = {$param_def_kind} `{$param_name}` is 
 hir_analysis_redundant_lifetime_args = unnecessary lifetime parameter `{$victim}`
     .note = you can use the `{$candidate}` lifetime directly, in place of `{$victim}`
 
+hir_analysis_register_type_unstable =
+    type `{$ty}` cannot be used with this register class in stable
+
 hir_analysis_requires_note = the `{$trait_name}` impl for `{$ty}` requires that `{$error_predicate}`
 
 hir_analysis_return_type_notation_equality_bound =
@@ -587,7 +588,7 @@ hir_analysis_value_of_associated_struct_already_specified =
     .label = re-bound here
     .previous_bound_label = `{$item_name}` bound here first
 
-hir_analysis_variadic_function_compatible_convention = C-variadic function must have a compatible calling convention, like {$conventions}
+hir_analysis_variadic_function_compatible_convention = C-variadic function must have a compatible calling convention, like `C`, `cdecl`, `system`, `aapcs`, `win64`, `sysv64` or `efiapi`
     .label = C-variadic function must have a compatible calling convention
 
 hir_analysis_variances_of = {$variances}
