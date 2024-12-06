@@ -1,26 +1,25 @@
-use run_make_support::{rustc, clang, serde_json, rfs};
 use std::collections::HashMap;
 
+use run_make_support::{clang, rfs, rustc, serde_json};
+
 const C_TYPES: &[(&str, &str)] = &[
-    ("c_char", "__CHAR_BIT__"),              // Character width
+    ("c_char", "__CHAR_BIT__"), // Character width
     ("char_signedness", "__CHAR_UNSIGNED__"),
-    ("c_double", "__SIZEOF_DOUBLE__"),       // Double precision floating-point
-    ("c_float", "__SIZEOF_FLOAT__"),         // Single precision floating-point
-    ("c_int", "__SIZEOF_INT__"),             // Signed integer
-    ("c_long", "__SIZEOF_LONG__"),           // Signed long integer
-    ("c_longlong", "__SIZEOF_LONG_LONG__"),  // Signed long long integer
-    ("c_schar", "__SIZEOF_CHAR__"),          // Signed char
-    ("c_short", "__SIZEOF_SHORT__"),         // Signed short integer
-    ("c_uchar", "__SIZEOF_CHAR__"),          // Unsigned char
-    ("c_uint", "__SIZEOF_INT__"),            // Unsigned integer
-    ("c_ulong", "__SIZEOF_LONG__"),          // Unsigned long integer
+    ("c_double", "__SIZEOF_DOUBLE__"), // Double precision floating-point
+    ("c_float", "__SIZEOF_FLOAT__"),   // Single precision floating-point
+    ("c_int", "__SIZEOF_INT__"),       // Signed integer
+    ("c_long", "__SIZEOF_LONG__"),     // Signed long integer
+    ("c_longlong", "__SIZEOF_LONG_LONG__"), // Signed long long integer
+    ("c_schar", "__SIZEOF_CHAR__"),    // Signed char
+    ("c_short", "__SIZEOF_SHORT__"),   // Signed short integer
+    ("c_uchar", "__SIZEOF_CHAR__"),    // Unsigned char
+    ("c_uint", "__SIZEOF_INT__"),      // Unsigned integer
+    ("c_ulong", "__SIZEOF_LONG__"),    // Unsigned long integer
     ("c_ulonglong", "__SIZEOF_LONG_LONG__"), // Unsigned long long integer
-    ("c_ushort", "__SIZEOF_SHORT__"),        // Unsigned short integer
-    ("c_size_t", "__SIZEOF_SIZE_T__"),       // Size type
+    ("c_ushort", "__SIZEOF_SHORT__"),  // Unsigned short integer
+    ("c_size_t", "__SIZEOF_SIZE_T__"), // Size type
     ("c_ptrdiff_t", "__SIZEOF_PTRDIFF_T__"), // Pointer difference type];
 ];
-
-
 
 // #define __CHAR_BIT__ 8 // c_char
 // #define __CHAR_UNSIGNED__ 1 // char signedness
@@ -35,7 +34,6 @@ const C_TYPES: &[(&str, &str)] = &[
 // #define __SIZEOF_PTRDIFF_T__ 4 // c_ptrdiff_t
 // #define __SIZEOF_SHORT__ 2 // c_short
 // #define __SIZEOF_SIZE_T__ 4 // c_size_t
-
 
 // const ADDITIONAL_CHECKS: &[(&str, &str)] = &[
 //     ("bool", "__BOOL_WIDTH__"),
@@ -52,25 +50,15 @@ type ClangDefinitions = HashMap<String, String>;
 type TargetDefinitions = HashMap<String, ClangDefinitions>;
 
 fn get_target_list() -> String {
+    let completed_process = rustc().arg("--print").arg("target-list").run();
 
-    let completed_process = rustc()
-        .arg("--print")
-        .arg("target-list")
-        .run();
-
-    String::from_utf8(completed_process.stdout())
-        .expect("error not a string")
+    String::from_utf8(completed_process.stdout()).expect("error not a string")
 }
 
 //specifically querying the rust target with the llvm target.
 fn get_llvm_target(rust_target: &str) -> Option<String> {
-
     let completed_process = rustc()
-        .args(&[
-            "-Z", "unstable-options",
-            "--print", "target-spec-json",
-            "--target", rust_target
-        ])
+        .args(&["-Z", "unstable-options", "--print", "target-spec-json", "--target", rust_target])
         .run();
 
     let json_output = match String::from_utf8(completed_process.stdout()) {
@@ -86,18 +74,9 @@ fn get_llvm_target(rust_target: &str) -> Option<String> {
     vals["llvm-target"].as_str().map(|s| s.to_string())
 }
 
-
-
 fn get_clang_definitions(llvm_target: &str) -> HashMap<String, String> {
-    let completed_process = clang()
-        .args(&[
-            "-E",
-            "-dM",
-            "-x", "c",
-            "/dev/null",
-            "-target", llvm_target
-        ])
-        .run();
+    let completed_process =
+        clang().args(&["-E", "-dM", "-x", "c", "/dev/null", "-target", llvm_target]).run();
 
     let output = completed_process.stdout_utf8();
 
@@ -119,7 +98,8 @@ fn get_clang_definitions(llvm_target: &str) -> HashMap<String, String> {
     definitions // clang defines | int vals
 }
 
-fn collect_clang_definitions(target: &HashMap<String, String>) -> TargetDefinitions { //rust target | llvm target
+fn collect_clang_definitions(target: &HashMap<String, String>) -> TargetDefinitions {
+    //rust target | llvm target
     let mut all_definitions = HashMap::new();
 
     for llvm_target in target.values() {
@@ -130,19 +110,17 @@ fn collect_clang_definitions(target: &HashMap<String, String>) -> TargetDefiniti
     }
 
     all_definitions
-
 }
 
-fn generate_rust_test(definitions: HashMap<String, String>) -> String { //clang definition | int
+fn generate_rust_test(definitions: HashMap<String, String>) -> String {
+    //clang definition | int
     let mut test_code = String::new();
     test_code.push_str("use std::ffi::c_char;\n");
     test_code.push_str("fn main() {");
 
     if let Some(is_unsigned) = definitions.get("__CHAR_UNSIGNED__") {
         let char_type = if is_unsigned == "1" { "u8" } else { "i8" };
-        test_code.push_str(&format!(
-            "    const _CHAR: c_char = 0_{char_type};\n"
-        ));
+        test_code.push_str(&format!("    const _CHAR: c_char = 0_{char_type};\n"));
     }
 
     test_code.push_str("}\n");
@@ -164,9 +142,7 @@ fn generate_rust_test(definitions: HashMap<String, String>) -> String { //clang 
 fn main() {
     let output = get_target_list();
 
-    let targets: Vec<&str> = output
-        .lines()
-        .collect();
+    let targets: Vec<&str> = output.lines().collect();
 
     let mut target_map = HashMap::new();
 
@@ -187,10 +163,6 @@ fn main() {
     for defines in all_definitions.values() {
         let test = generate_rust_test(defines.clone());
         rfs::write("test.rs", test);
-        rustc()
-            .arg("-Z")
-            .arg("no-codegen")
-            .arg("test.rs")
-            .run();
+        rustc().arg("-Z").arg("no-codegen").arg("test.rs").run();
     }
 }
