@@ -3075,6 +3075,7 @@ pub enum ClosureBinder {
 pub struct Mod<'hir> {
     pub spans: ModSpans,
     pub item_ids: &'hir [ItemId],
+    pub had_parse_errors: bool,
 }
 
 #[derive(Copy, Clone, Debug, HashStable_Generic)]

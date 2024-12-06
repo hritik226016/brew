@@ -37,6 +37,7 @@ pub(crate) struct ParsedExternalMod {
     pub file_path: PathBuf,
     pub dir_path: PathBuf,
     pub dir_ownership: DirOwnership,
+    pub had_parse_error: bool,
 }
 
 pub enum ModError<'a> {
@@ -74,6 +75,8 @@ pub(crate) fn parse_external_mod(
         attrs.extend(inner_attrs);
         (items, inner_span, mp.file_path)
     };
+    let had_parse_error = result.is_err();
+
     // (1) ...instead, we return a dummy module.
     let (items, spans, file_path) =
         result.map_err(|err| err.report(sess, span)).unwrap_or_default();
@@ -81,7 +84,7 @@ pub(crate) fn parse_external_mod(
     // Extract the directory path for submodules of the module.
     let dir_path = file_path.parent().unwrap_or(&file_path).to_owned();
 
-    ParsedExternalMod { items, spans, file_path, dir_path, dir_ownership }
+    ParsedExternalMod { items, spans, file_path, dir_path, dir_ownership, had_parse_error }
 }
 
 pub(crate) fn mod_dir_path(
