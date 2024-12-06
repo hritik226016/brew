@@ -1037,7 +1037,7 @@ where
             // Turn untagged "global" pointers (obtained via `tcx`) into the machine pointer to the allocation.
             M::adjust_alloc_root_pointer(&self, Pointer::from(id), Some(kind))
         } else {
-            // Allocate new memory for mutable data
+            // Allocate new memory for mutable data.
             self.allocate_bytes_ptr(bytes, align, kind, mutbl)
         }
     }
