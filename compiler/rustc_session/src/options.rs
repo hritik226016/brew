@@ -9,6 +9,7 @@ use rustc_data_structures::profiling::TimePassesFormat;
 use rustc_data_structures::stable_hasher::Hash64;
 use rustc_errors::{ColorConfig, LanguageIdentifier, TerminalUrl};
 use rustc_feature::UnstableFeatures;
+use rustc_macros::{Decodable, Encodable};
 use rustc_span::edition::Edition;
 use rustc_span::{RealFileName, SourceFileHashAlgorithm};
 use rustc_target::spec::{
@@ -58,10 +59,124 @@ macro_rules! hash_substruct {
     };
 }
 
+// For example, when external target modifier is '-Zregparm=2':
+// Target modifier hash (hash_of('regparm')) + user value ('2') from external crate
+// is converted into description: prefix ('Z'), name ('regparm'), tech value ('Some(2)')
+pub struct ExtendedTargetModifierInfo {
+    pub prefix: String,
+    pub name: String,
+    pub tech_value: String,
+}
+
+// A recorded -Zopt_name=opt_value (or -Copt_name=opt_value)
+// for abi-changing or vulnerability-affecting options
+#[derive(Debug, Clone, Encodable, Decodable)]
+pub struct TargetModifier {
+    pub name_hash: u64,     // option name hash
+    pub value_name: String, // User-provided option value (before parsing)
+}
+
+macro_rules! tmod_push {
+    ($opt_name:ident, $opt_expr:expr, $mods:expr, $tmod_vals:expr) => {
+        $mods.push(TargetModifier {
+            name_hash: calc_opt_name_hash(stringify!($opt_name)),
+            value_name: $tmod_vals.get(stringify!($opt_name)).cloned().unwrap_or_default(),
+        });
+    };
+}
+
+macro_rules! gather_tmods {
+    ($_opt_name:ident, $init:expr, $opt_expr:expr, $mods:expr, $tmod_vals:expr, [SUBSTRUCT], [TMOD]) => {
+        compile_error!("SUBSTRUCT can't be target modifier");
+    };
+    ($opt_name:ident, $init:expr, $opt_expr:expr, $mods:expr, $tmod_vals:expr, [UNTRACKED], [TMOD]) => {
+        tmod_push!($opt_name, $opt_expr, $mods, $tmod_vals)
+    };
+    ($opt_name:ident, $init:expr, $opt_expr:expr, $mods:expr, $tmod_vals:expr, [TRACKED], [TMOD]) => {
+        tmod_push!($opt_name, $opt_expr, $mods, $tmod_vals)
+    };
+    ($opt_name:ident, $init:expr, $opt_expr:expr, $mods:expr, $tmod_vals:expr, [TRACKED_NO_CRATE_HASH], [TMOD]) => {
+        tmod_push!($opt_name, $opt_expr, $mods, $tmod_vals)
+    };
+    ($_opt_name:ident, $init:expr, $opt_expr:expr, $mods:expr, $tmod_vals:expr, [SUBSTRUCT], []) => {
+        $opt_expr.gather_target_modifiers($mods, $tmod_vals);
+    };
+    ($_opt_name:ident, $init:expr, $_opt_expr:expr, $_mods:expr, $tmod_vals:expr, [UNTRACKED], []) => {{}};
+    ($_opt_name:ident, $init:expr, $_opt_expr:expr, $_mods:expr, $tmod_vals:expr, [TRACKED], []) => {{}};
+    ($_opt_name:ident, $init:expr, $_opt_expr:expr, $_mods:expr, $tmod_vals:expr, [TRACKED_NO_CRATE_HASH], []) => {{}};
+}
+
+fn calc_opt_name_hash(opt_name: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    use std::hash::Hash;
+    opt_name.hash(&mut hasher);
+    hasher.finish()
+}
+
+macro_rules! tmod_info_ret {
+    ($parse:ident, $opt_expr:expr, $prefix:expr, $opt_name:ident, $name_hash:expr, $user_value:expr) => {
+        if $name_hash == calc_opt_name_hash(stringify!($opt_name)) {
+            #[allow(unused_assignments)] // For typeof() only
+            let mut parsed = *$opt_expr;
+            parsed = Default::default();
+            parse::$parse(&mut parsed, Some($user_value));
+            return Some(ExtendedTargetModifierInfo {
+                prefix: $prefix.to_string(),
+                name: stringify!($opt_name).to_string().replace('_', "-"),
+                tech_value: format!("{:?}", parsed),
+            });
+        }
+    };
+}
+
+macro_rules! tmod_info {
+    ($parse:ident, $opt_expr:expr, $prefix:expr, $_opt_name:ident, $_name_hash:expr, $user_value:expr, [SUBSTRUCT], [TMOD]) => {
+        compile_error!("SUBSTRUCT can't be target modifier");
+    };
+    ($parse:ident, $opt_expr:expr, $prefix:expr, $opt_name:ident, $name_hash:expr, $user_value:expr, [UNTRACKED], [TMOD]) => {
+        tmod_info_ret!($parse, $opt_expr, $prefix, $opt_name, $name_hash, $user_value);
+    };
+    ($parse:ident, $opt_expr:expr, $prefix:expr, $opt_name:ident, $name_hash:expr, $user_value:expr, [TRACKED], [TMOD]) => {
+        tmod_info_ret!($parse, $opt_expr, $prefix, $opt_name, $name_hash, $user_value);
+    };
+    ($parse:ident, $opt_expr:expr, $prefix:expr, $opt_name:ident, $name_hash:expr, $user_value:expr, [TRACKED_NO_CRATE_HASH], [TMOD]) => {
+        tmod_info_ret!($parse, $opt_expr, $prefix, $opt_name, $name_hash, $user_value);
+    };
+    ($parse:ident, $opt_expr:expr, $prefix:expr, $_opt_name:ident, $name_hash:expr, $user_value:expr, [SUBSTRUCT], []) => {
+        if let Some(v) = $opt_expr.target_modifier_info_by_hash($name_hash, $user_value) {
+            return Some(v);
+        }
+    };
+    ($parse:ident, $opt_expr:expr, $prefix:expr, $_opt_name:ident, $_name_hash:expr, $user_value:expr, [UNTRACKED], []) => {{}};
+    ($parse:ident, $opt_expr:expr, $prefix:expr, $_opt_name:ident, $_name_hash:expr, $user_value:expr, [TRACKED], []) => {{}};
+    ($parse:ident, $opt_expr:expr, $prefix:expr, $_opt_name:ident, $_name_hash:expr, $user_value:expr, [TRACKED_NO_CRATE_HASH], []) => {{}};
+}
+
+macro_rules! gather_tmods_top_level {
+    ($_opt_name:ident, $opt_expr:expr, $mods:expr, $tmod_vals:expr, [SUBSTRUCT], [TMOD]) => {
+        compile_error!("SUBSTRUCT can't be target modifier");
+    };
+    ($opt_name:ident, $opt_expr:expr, $mods:expr, $tmod_vals:expr, [UNTRACKED], [TMOD]) => {
+        compile_error!("Top level option can't be target modifier");
+    };
+    ($opt_name:ident, $opt_expr:expr, $mods:expr, $tmod_vals:expr, [TRACKED], [TMOD]) => {
+        compile_error!("Top level option can't be target modifier");
+    };
+    ($opt_name:ident, $opt_expr:expr, $mods:expr, $tmod_vals:expr, [TRACKED_NO_CRATE_HASH], [TMOD]) => {
+        compile_error!("Top level option can't be target modifier");
+    };
+    ($_opt_name:ident, $opt_expr:expr, $mods:expr, $tmod_vals:expr, [SUBSTRUCT], []) => {
+        $opt_expr.gather_target_modifiers($mods, $tmod_vals);
+    };
+    ($_opt_name:ident, $_opt_expr:expr, $_mods:expr, $_tmod_vals:expr, [UNTRACKED], []) => {{}};
+    ($_opt_name:ident, $_opt_expr:expr, $_mods:expr, $_tmod_vals:expr, [TRACKED], []) => {{}};
+    ($_opt_name:ident, $_opt_expr:expr, $_mods:expr, $_tmod_vals:expr, [TRACKED_NO_CRATE_HASH], []) => {{}};
+}
+
 macro_rules! top_level_options {
     ( $( #[$top_level_attr:meta] )* pub struct Options { $(
         $( #[$attr:meta] )*
-        $opt:ident : $t:ty [$dep_tracking_marker:ident],
+        $opt:ident : $t:ty [$dep_tracking_marker:ident $( $tmod:ident )?],
     )* } ) => (
         #[derive(Clone)]
         $( #[$top_level_attr] )*
@@ -69,7 +184,8 @@ macro_rules! top_level_options {
             $(
                 $( #[$attr] )*
                 pub $opt: $t
-            ),*
+            ),*,
+            pub target_modifiers: BTreeMap<String, String>,
         }
 
         impl Options {
@@ -96,6 +212,28 @@ macro_rules! top_level_options {
                         [$dep_tracking_marker]);
                 })*
                 hasher.finish()
+            }
+
+            // Returns options prefix ("Z"/"C"), option name,
+            // and parsed user value converted into techical option value for comparison
+            pub fn target_modifier_info_by_hash(
+                &self, opt_name_hash: u64, user_value: &str
+            ) -> Option<ExtendedTargetModifierInfo> {
+                $({
+                    tmod_info!($opt, &self.$opt, "", $opt, opt_name_hash, user_value, [$dep_tracking_marker], [$($tmod),*]);
+                })*
+                None
+            }
+
+            pub fn gather_target_modifiers(&self) -> Vec<TargetModifier> {
+                let mut mods = Vec::<TargetModifier>::new();
+                $({
+                    gather_tmods_top_level!($opt,
+                        &self.$opt, &mut mods, &self.target_modifiers,
+                        [$dep_tracking_marker], [$($tmod),*]);
+                })*
+                mods.sort_by(|a, b| a.name_hash.cmp(&b.name_hash));
+                mods
             }
         }
     );
@@ -225,6 +363,15 @@ top_level_options!(
     }
 );
 
+macro_rules! has_tmod {
+    ($v:ident) => {
+        true
+    };
+    () => {
+        false
+    };
+}
+
 /// Defines all `CodegenOptions`/`DebuggingOptions` fields and parsers all at once. The goal of this
 /// macro is to define an interface that can be programmatically used by the option parser
 /// to initialize the struct without hardcoding field names all over the place.
@@ -238,7 +385,7 @@ macro_rules! options {
      $($( #[$attr:meta] )* $opt:ident : $t:ty = (
         $init:expr,
         $parse:ident,
-        [$dep_tracking_marker:ident],
+        [$dep_tracking_marker:ident $( $tmod:ident )*],
         $desc:expr)
      ),* ,) =>
 (
@@ -256,8 +403,9 @@ macro_rules! options {
         pub fn build(
             early_dcx: &EarlyDiagCtxt,
             matches: &getopts::Matches,
+            target_modifiers: &mut BTreeMap<String, String>,
         ) -> $struct_name {
-            build_options(early_dcx, matches, $stat, $prefix, $outputname)
+            build_options(early_dcx, matches, target_modifiers, $stat, $prefix, $outputname)
         }
 
         fn dep_tracking_hash(&self, for_crate_hash: bool, error_format: ErrorOutputType) -> u64 {
@@ -277,10 +425,32 @@ macro_rules! options {
                                         );
             hasher.finish()
         }
+
+        // Returns option prefix ("Z"/"C") and name if found by hash
+        pub fn target_modifier_info_by_hash(
+            &self, _opt_name_hash: u64, _user_value: &str
+        ) -> Option<ExtendedTargetModifierInfo> {
+            $({
+                tmod_info!($parse, &self.$opt, $prefix, $opt, _opt_name_hash, _user_value,
+                    [$dep_tracking_marker], [$($tmod),*]);
+            })*
+            None
+        }
+
+        pub fn gather_target_modifiers(
+            &self,
+            _mods: &mut Vec<TargetModifier>,
+            _tmod_vals: &BTreeMap<String, String>,
+        ) {
+            $({
+                gather_tmods!($opt, $init,
+                    &self.$opt, _mods, _tmod_vals, [$dep_tracking_marker], [$($tmod),*]);
+            })*
+        }
     }
 
     pub const $stat: OptionDescrs<$struct_name> =
-        &[ $( (stringify!($opt), $optmod::$opt, desc::$parse, $desc) ),* ];
+        &[ $( (stringify!($opt), $optmod::$opt, desc::$parse, $desc, has_tmod!($($tmod),*)) ),* ];
 
     mod $optmod {
     $(
@@ -315,12 +485,14 @@ macro_rules! redirect_field {
 }
 
 type OptionSetter<O> = fn(&mut O, v: Option<&str>) -> bool;
-type OptionDescrs<O> = &'static [(&'static str, OptionSetter<O>, &'static str, &'static str)];
+type OptionDescrs<O> =
+    &'static [(&'static str, OptionSetter<O>, &'static str, &'static str, bool)];
 
 #[allow(rustc::untranslatable_diagnostic)] // FIXME: make this translatable
 fn build_options<O: Default>(
     early_dcx: &EarlyDiagCtxt,
     matches: &getopts::Matches,
+    target_modifiers: &mut BTreeMap<String, String>,
     descrs: OptionDescrs<O>,
     prefix: &str,
     outputname: &str,
@@ -334,7 +506,7 @@ fn build_options<O: Default>(
 
         let option_to_lookup = key.replace('-', "_");
         match descrs.iter().find(|(name, ..)| *name == option_to_lookup) {
-            Some((_, setter, type_desc, _)) => {
+            Some((_, setter, type_desc, _, tmod)) => {
                 if !setter(&mut op, value) {
                     match value {
                         None => early_dcx.early_fatal(
@@ -348,6 +520,9 @@ fn build_options<O: Default>(
                             ),
                         ),
                     }
+                }
+                if *tmod && let Some(value) = value {
+                    target_modifiers.insert(option_to_lookup, value.to_string());
                 }
             }
             None => early_dcx.early_fatal(format!("unknown {outputname} option: `{key}`")),
@@ -1652,6 +1827,8 @@ options! {
     target_feature: String = (String::new(), parse_target_feature, [TRACKED],
         "target specific attributes. (`rustc --print target-features` for details). \
         This feature is unsafe."),
+    unsafe_allow_abi_mismatch: Vec<String> = (Vec::new(), parse_comma_list, [UNTRACKED],
+        "Allow incompatible target modifiers in dependency crates (comma separated list)"),
     // tidy-alphabetical-end
 
     // If you add a new option, please update:
@@ -1988,7 +2165,7 @@ options! {
         "enable queries of the dependency graph for regression testing (default: no)"),
     randomize_layout: bool = (false, parse_bool, [TRACKED],
         "randomize the layout of types (default: no)"),
-    regparm: Option<u32> = (None, parse_opt_number, [TRACKED],
+    regparm: Option<u32> = (None, parse_opt_number, [TRACKED TMOD],
         "On x86-32 targets, setting this to N causes the compiler to pass N arguments \
         in registers EAX, EDX, and ECX instead of on the stack for\
         \"C\", \"cdecl\", and \"stdcall\" fn.\
