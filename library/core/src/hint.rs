@@ -320,6 +320,8 @@ pub fn spin_loop() {
 /// to the function, though.
 ///
 /// ```
+/// # use std::hint::black_box;
+/// #
 /// // This...
 /// let y = black_box(5 * 10);
 /// // ...will still be optimized to this:
@@ -330,6 +332,8 @@ pub fn spin_loop() {
 /// moving the multiplication outside of `black_box`:
 ///
 /// ```
+/// # use std::hint::black_box;
+/// #
 /// // No assumptions can be made about either number, so the multiplication is kept.
 /// let y = black_box(5) * black_box(10);
 /// ```
