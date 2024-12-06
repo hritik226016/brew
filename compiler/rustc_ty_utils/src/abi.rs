@@ -470,21 +470,16 @@ fn fn_abi_sanity_check<'tcx>(
                         // For an unsized type we'd only pass the sized prefix, so there is no universe
                         // in which we ever want to allow this.
                         assert!(sized, "`PassMode::Direct` for unsized type in ABI: {:#?}", fn_abi);
+
                         // This really shouldn't happen even for sized aggregates, since
                         // `immediate_llvm_type` will use `layout.fields` to turn this Rust type into an
                         // LLVM type. This means all sorts of Rust type details leak into the ABI.
-                        // However wasm sadly *does* currently use this mode so we have to allow it --
-                        // but we absolutely shouldn't let any more targets do that.
-                        // (Also see <https://github.com/rust-lang/rust/issues/115666>.)
-                        //
-                        // The unstable abi `PtxKernel` also uses Direct for now.
-                        // It needs to switch to something else before stabilization can happen.
-                        // (See issue: https://github.com/rust-lang/rust/issues/117271)
+                        // The unadjusted ABI however uses Direct for all args. It is ill-specified,
+                        // but unfortunately we need it for calling certain LLVM intrinsics.
                         assert!(
-                            matches!(&*tcx.sess.target.arch, "wasm32" | "wasm64")
-                                || matches!(spec_abi, ExternAbi::PtxKernel | ExternAbi::Unadjusted),
-                            "`PassMode::Direct` for aggregates only allowed for \"unadjusted\" and \"ptx-kernel\" functions and on wasm\n\
-                          Problematic type: {:#?}",
+                            matches!(spec_abi, ExternAbi::Unadjusted),
+                            "`PassMode::Direct` for aggregates only allowed for \"unadjusted\"\n\
+                             Problematic type: {:#?}",
                             arg.layout,
                         );
                     }
